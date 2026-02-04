@@ -400,6 +400,12 @@ class SuratTemplateController extends Controller
     {
         $suratTemplate = SuratTemplate::findOrFail($id);
         
+        // Debug data
+    \Log::info('Isi surat dari database:', [
+        'raw' => $suratTemplate->isi_surat,
+        'length' => strlen($suratTemplate->isi_surat),
+        'first_100_chars' => substr($suratTemplate->isi_surat, 0, 100)
+    ]);
         // Extract nomor urut dari nomor_surat untuk form edit
         $nomorParts = explode('/', $suratTemplate->nomor_surat);
         $nomorUrut = $nomorParts[0] ?? '';
@@ -410,11 +416,12 @@ class SuratTemplateController extends Controller
         // Bersihkan backslashes jika ada
         $suratTemplate->isi_surat = stripslashes($suratTemplate->isi_surat);
         
-        // Debug
-        \Log::info('Data setelah decode:', [
-            'length' => strlen($suratTemplate->isi_surat),
-            'preview' => substr($suratTemplate->isi_surat, 0, 200)
-        ]);
+         // Hapus encoding ganda jika ada
+    $suratTemplate->isi_surat = str_replace(
+        ['&lt;', '&gt;', '&amp;', '&quot;', '&#039;'],
+        ['<', '>', '&', '"', "'"],
+        $suratTemplate->isi_surat
+    );
 
         $jenisSuratList = [
             'kepala_desa' => 'Surat Kepala Desa',
@@ -1109,79 +1116,6 @@ private function formatHTMLForMPDF($surats)
     
     return $html;
 }
-
-// private function formatHTMLForDomPDF($surats)
-// {
-//     $isi_surat = $surats->isi_surat;
-//     $isi_surat = html_entity_decode($isi_surat, ENT_QUOTES, 'UTF-8');
-    
-//     // Logo dari public/images/
-//     $logoPath = asset('images/logo_salam.png');
-//     $logoHtml = '<img src="' . $logoPath . '" style="position: absolute; left: 20px; top: 10px; width: 80px; height: auto;">';
-    
-//     $html = '
-//     <!DOCTYPE html>
-//     <html>
-//     <head>
-//         <style>
-//             body { font-family: "Times New Roman", Times, serif; font-size: 12pt; }
-//             .kop-surat { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 30px; }
-//             .header-kop { text-align: center; margin-left: 120px; }
-//             table { border-collapse: collapse; width: 100%; }
-//             td, th { border: 1px solid #000; padding: 5px; }
-//         </style>
-//     </head>
-//     <body>
-//         <div class="kop-surat">
-//             ' . $logoHtml . '
-//             <div class="header-kop">
-//                 <h3>PEMERINTAH KABUPATEN PURWOREJO</h3>
-//                 <h3>KECAMATAN GEBANG</h3>
-//                 <h3>' . ($surats->jenis_surat == 'kepala_desa' ? 'KEPALA DESA' : 'SEKRETARIAT') . ' DESA SALAM</h3>
-//                 <p>Alamat: Desa Salam Kecamatan Gebang Kabupaten Purworejo Kode Pos 54191</p>
-//             </div>
-//         </div>
-        
-//         <div style="text-align: right; margin-bottom: 20px;">
-//             <p>Salam, ' . \Carbon\Carbon::parse($surats->tanggal)->locale('id')->isoFormat('D MMMM Y') . '</p>
-//         </div>
-        
-//         <div style="overflow: hidden; margin: 20px 0;">
-//             <div style="float: left; width: 50%;">
-//                 <p><strong>Nomor</strong> : ' . htmlspecialchars($surats->nomor_surat) . '</p>
-//                 <p><strong>Lampiran</strong> : ' . htmlspecialchars($surats->lampiran) . '</p>
-//                 <p><strong>Perihal</strong> : ' . htmlspecialchars($surats->perihal) . '</p>
-//             </div>
-//             <div style="float: right; width: 50%; text-align: right;">
-//                 <p><strong>Kepada:</strong></p>
-//                 <p>Yth. ' . htmlspecialchars($surats->kepada) . '</p>
-//                 <p>Di</p>
-//                 <p>Gebang</p>
-//             </div>
-//         </div>
-        
-//         <div style="line-height: 1.6; text-align: justify;">
-//             ' . $isi_surat . '
-//         </div>
-        
-//         <div style="margin-top: 100px; overflow: hidden;">
-//             <div style="float: right; width: 40%; text-align: center;">
-//                 <p>' . ($surats->jenis_surat == 'kepala_desa' ? 'Pj. Kepala Desa Salam' : 'Sekretaris Desa Salam') . '</p>
-//                 <div style="height: 80px;"></div>
-//                 <p><strong>' . ($surats->jenis_surat == 'kepala_desa' ? 'BAMBANG LISTIONO AGUS,P.S.Sos' : 'MAULANA AMIRUL AKHMAD') . '</strong></p>';
-    
-//     if ($surats->jenis_surat == 'kepala_desa') {
-//         $html .= '<p>Pembina /IVa</p><p>NIP.196808111989031008</p>';
-//     }
-    
-//     $html .= '
-//             </div>
-//         </div>
-//     </body>
-//     </html>';
-    
-//     return $html;
-// }
 
 private function processTablesForMPDF($html)
 {

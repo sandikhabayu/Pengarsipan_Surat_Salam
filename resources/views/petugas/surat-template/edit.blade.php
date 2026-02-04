@@ -460,7 +460,9 @@
                     <button type="button" onclick="showTableControls()">⚙️ Settings</button>
                 </div>
 
-                <textarea id="isi_surat" name="isi_surat" class="w-full border border-gray-300 rounded" rows="15">{!! old('isi_surat', $suratTemplate->isi_surat) !!}</textarea>
+                <textarea id="isi_surat" name="isi_surat" class="w-full border border-gray-300 rounded" rows="15"
+                    style="display: none;">{{ htmlspecialchars(old('isi_surat', $suratTemplate->isi_surat), ENT_QUOTES, 'UTF-8', false) }}</textarea>
+                <div id="editor-container" style="min-height: 400px; border: 1px solid #ddd; padding: 10px;"></div>
             </div>
 
             <div class="flex items-center justify-end gap-4">
@@ -481,12 +483,27 @@
     <script src="https://cdn.ckeditor.com/4.22.1/standard/plugins/table/plugin.js"></script>
 
     <script>
+        // Encode konten di controller ke base64
+        var encodedContent = '{{ base64_encode(old('isi_surat', $suratTemplate->isi_surat)) }}';
+
+        // Decode base64 di JavaScript
+        function base64Decode(str) {
+            try {
+                return decodeURIComponent(atob(str).split('').map(function(c) {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+            } catch (e) {
+                console.error('Base64 decode error:', e);
+                return '';
+            }
+        }
+
+        var decodedContent = base64Decode(encodedContent);
+
+        // Set konten ke textarea
+        document.getElementById('isi_surat').value = decodedContent;
         // SIMPAN DATA DARI DATABASE SEBELUM DIINISIALISASI CKEDITOR
         var existingContent = document.getElementById('isi_surat').value;
-        // Preview format surat
-        document.getElementById('format_surat').addEventListener('input', function() {
-            document.getElementById('preview-format').textContent = this.value || '[format]';
-        });
 
         // Prevent default tab behavior pada seluruh form
         document.addEventListener('keydown', function(e) {
@@ -527,16 +544,6 @@
             this.value = this.value.replace(/<img[^>]*>/gi, '');
         });
 
-        // Set jenis surat dari database
-        document.addEventListener('DOMContentLoaded', function() {
-            var jenisSuratSelect = document.getElementById('jenis_surat');
-            var jenisSuratValue = "{{ old('jenis_surat', $suratTemplate->jenis_surat) }}";
-
-            if (jenisSuratValue) {
-                jenisSuratSelect.value = jenisSuratValue;
-            }
-        });
-
         // Load plugin justify jika belum ada
         if (!CKEDITOR.plugins.registered.justify) {
             CKEDITOR.plugins.addExternal('justify', 'https://cdn.ckeditor.com/4.22.1/standard/plugins/justify/',
@@ -546,6 +553,24 @@
         console.log('CKEDITOR plugins:', CKEDITOR.plugins.registered);
         var editor;
         var currentTable = null;
+
+        // Data HTML dari database
+        var rawHtmlContent = {!! json_encode(old('isi_surat', $suratTemplate->isi_surat)) !!};
+
+        // Decode HTML entities jika perlu
+        function decodeHtmlEntities(str) {
+            if (!str) return '';
+            var textarea = document.createElement('textarea');
+            textarea.innerHTML = str;
+            return textarea.value;
+        }
+
+        // Get content from textarea
+        var rawContent = document.getElementById('isi_surat').value;
+        var decodedContent = decodeHtmlEntities(rawContent);
+
+        console.log('Original content length:', rawContent.length);
+        console.log('Decoded content preview:', decodedContent.substring(0, 200));
 
         // Inisialisasi CKEditor dengan config khusus untuk editing tabel
         CKEDITOR.plugins.addExternal('tableresize', '/js/ckeditor/plugins/tableresize/', 'plugin.js');
@@ -612,6 +637,7 @@
             // Force plain text output
             basicEntities: false,
             entities: false,
+            fullPage: false,
             // Enter mode untuk surat resmi
             enterMode: CKEDITOR.ENTER_BR,
             shiftEnterMode: CKEDITOR.ENTER_P,
@@ -626,21 +652,37 @@
             // Setup untuk clean output dan handling
             on: {
                 instanceReady: function(ev) {
-                    editor = ev.editor;
-                    // setupTabBehavior();
-                    // setupTableTracking();
-                    // setupTabHandler();
-                    // Ambil data langsung dari textarea
-                    var initialData = document.getElementById('isi_surat').value;
+                    var editor = ev.editor;
 
-                    // Clean data jika perlu
-                    initialData = initialData
-                        .replace(/&lt;/g, '<')
-                        .replace(/&gt;/g, '>')
-                        .replace(/&amp;/g, '&');
+                    // Bersihkan konten dari encoding ganda
+                    var content = decodedContent;
+                    editor.setData(decodedContent);
+                    editor.focus();
+                    // Hapus encoding ganda jika ada
+                    if (content.includes('&lt;') || content.includes('&gt;')) {
+                        content = content
+                            .replace(/&lt;/g, '<')
+                            .replace(/&gt;/g, '>')
+                            .replace(/&amp;/g, '&')
+                            .replace(/&quot;/g, '"')
+                            .replace(/&#039;/g, "'")
+                            .replace(/&#39;/g, "'");
+                    }
 
-                    // Set data ke CKEditor
-                    editor.setData(initialData);
+                    // Set data ke editor
+                    setTimeout(function() {
+                        editor.setData(content, {
+                            callback: function() {
+                                console.log('CKEditor initialized successfully');
+                                editor.focus();
+                            }
+                        });
+                    }, 100);
+
+                    // Update textarea saat ada perubahan
+                    editor.on('change', function() {
+                        editor.updateElement();
+                    });
 
                     // ===== OVERRIDE DEFAULT TABLE DIALOG =====
                     // Override dialog table untuk mengizinkan border="0"
@@ -1326,6 +1368,7 @@
 
             // Panggil sebelum form submit
             document.querySelector('form').addEventListener('submit', function(e) {
+                var editor = CKEDITOR.instances.isi_surat;
                 if (editor) {
                     // Update textarea dengan data dari CKEditor
                     editor.updateElement();
@@ -1334,6 +1377,20 @@
                     var textarea = document.getElementById('isi_surat');
                     var html = textarea.value;
 
+                    // Pastikan tabel memiliki atribut yang benar
+                    html = html.replace(/<table([^>]*)>/gi, function(match, attrs) {
+                        var result = match;
+
+                        // Tambahkan cellpadding dan cellspacing jika belum ada
+                        if (!result.includes('cellpadding=')) {
+                            result = result.replace('<table', '<table cellpadding="5"');
+                        }
+                        if (!result.includes('cellspacing=')) {
+                            result = result.replace('<table', '<table cellspacing="0"');
+                        }
+
+                        return result;
+                    });
                     // Convert align attribute to style
                     html = html.replace(/align="(left|center|right|justify)"/g, function(match, align) {
                         return 'style="text-align:' + align + ';"';
@@ -1360,17 +1417,50 @@
                         return result;
                     });
 
-                    // Encode HTML entities untuk storage aman
-                    html = html
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#039;');
-
                     textarea.value = html;
                 }
-                return true;
+            });
+            // Preview format surat
+            document.getElementById('format_surat').addEventListener('input', function() {
+                document.getElementById('preview-format').textContent = this.value || '[format]';
+            });
+            // Solusi paling aman - biarkan Blade handle escaping
+            document.addEventListener('DOMContentLoaded', function() {
+                // Ambil konten dari textarea
+                var textarea = document.getElementById('isi_surat');
+                var content = textarea.value;
+
+                // Basic cleanup
+                content = content.replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&quot;/g, '"')
+                    .replace(/&#039;/g, "'");
+
+                // Inisialisasi CKEditor dengan config minimal
+                CKEDITOR.replace('isi_surat', {
+                    height: 400,
+                    toolbar: 'full',
+                    allowedContent: true,
+                    on: {
+                        instanceReady: function() {
+                            // Set data setelah editor siap
+                            this.setData(content);
+                        }
+                    }
+                });
+
+                // Preview format surat
+                document.getElementById('format_surat').addEventListener('input', function() {
+                    document.getElementById('preview-format').textContent = this.value || '[format]';
+                });
+
+                // Set jenis surat
+                var jenisSuratSelect = document.getElementById('jenis_surat');
+                var jenisSuratValue = "{{ old('jenis_surat', $suratTemplate->jenis_surat) }}";
+                if (jenisSuratValue) {
+                    jenisSuratSelect.value = jenisSuratValue;
+                }
             });
         }
 
