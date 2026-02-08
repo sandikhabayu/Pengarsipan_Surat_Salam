@@ -300,11 +300,6 @@
         <div class="mb-6 border-b pb-2">
             <h3 class="text-lg font-semibold">Form Edit Surat</h3>
         </div>
-        <div class="bg-yellow-100 p-4 mb-4">
-            <p class="font-bold">Debug Data:</p>
-            <p>Isi surat length: {{ strlen($suratTemplate->isi_surat) }}</p>
-            <p>Isi surat preview: {{ substr($suratTemplate->isi_surat, 0, 200) }}</p>
-        </div>
 
         @if ($errors->any())
             <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
@@ -461,8 +456,7 @@
                 </div>
 
                 <textarea id="isi_surat" name="isi_surat" class="w-full border border-gray-300 rounded" rows="15"
-                    style="display: none;">{{ htmlspecialchars(old('isi_surat', $suratTemplate->isi_surat), ENT_QUOTES, 'UTF-8', false) }}</textarea>
-                <div id="editor-container" style="min-height: 400px; border: 1px solid #ddd; padding: 10px;"></div>
+                    style="display: none;">{!! old('isi_surat', $suratTemplate->isi_surat) !!}</textarea>
             </div>
 
             <div class="flex items-center justify-end gap-4">
@@ -483,27 +477,10 @@
     <script src="https://cdn.ckeditor.com/4.22.1/standard/plugins/table/plugin.js"></script>
 
     <script>
-        // Encode konten di controller ke base64
-        var encodedContent = '{{ base64_encode(old('isi_surat', $suratTemplate->isi_surat)) }}';
-
-        // Decode base64 di JavaScript
-        function base64Decode(str) {
-            try {
-                return decodeURIComponent(atob(str).split('').map(function(c) {
-                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-                }).join(''));
-            } catch (e) {
-                console.error('Base64 decode error:', e);
-                return '';
-            }
-        }
-
-        var decodedContent = base64Decode(encodedContent);
-
-        // Set konten ke textarea
-        document.getElementById('isi_surat').value = decodedContent;
-        // SIMPAN DATA DARI DATABASE SEBELUM DIINISIALISASI CKEDITOR
-        var existingContent = document.getElementById('isi_surat').value;
+        // Preview format surat
+        document.getElementById('format_surat').addEventListener('input', function() {
+            document.getElementById('preview-format').textContent = this.value || '[format]';
+        });
 
         // Prevent default tab behavior pada seluruh form
         document.addEventListener('keydown', function(e) {
@@ -516,9 +493,7 @@
             // Jika fokus di textarea CKEditor (hidden)
             if (e.target.id === 'isi_surat') {
                 e.preventDefault();
-                if (editor) {
-                    editor.focus();
-                }
+                editor.focus();
                 return;
             }
 
@@ -531,12 +506,221 @@
 
         // Fokus otomatis ke editor saat halaman load
         document.addEventListener('DOMContentLoaded', function() {
-            // Tunggu CKEditor ready
-            setTimeout(function() {
-                if (editor) {
-                    editor.focus();
+            // Dapatkan textarea
+            var textarea = document.getElementById('isi_surat');
+            var originalContent = textarea.value;
+
+            // Debug: Cek konten sebelum decode
+            console.log('Original content (first 200 chars):', originalContent.substring(0, 200));
+
+            // Fungsi untuk decode HTML entities
+            function decodeHtmlEntities(str) {
+                if (!str) return '';
+                var textarea = document.createElement('textarea');
+                textarea.innerHTML = str;
+                return textarea.value;
+            }
+
+            // Decode HTML entities
+            var decodedContent = decodeHtmlEntities(originalContent);
+
+            // Clean up double encoding jika ada
+            decodedContent = decodedContent
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&amp;/g, '&')
+                .replace(/&quot;/g, '"')
+                .replace(/&#039;/g, "'")
+                .replace(/&#39;/g, "'");
+
+            // Update textarea dengan konten yang sudah didecode
+            textarea.value = decodedContent;
+
+            console.log('Decoded content (first 200 chars):', decodedContent.substring(0, 200));
+            CKEDITOR.replace('isi_surat', {
+                height: 400,
+                // Toolbar lengkap dengan table tools
+                toolbar: [
+                    ['Source', '-', 'Preview'],
+                    ['Cut', 'Copy', 'Paste', 'PasteText', 'PasteFromWord', '-', 'Undo', 'Redo'],
+                    ['Bold', 'Italic', 'Underline', 'Strike', '-', 'RemoveFormat'],
+                    ['NumberedList', 'BulletedList', '-', 'Outdent', 'Indent'],
+                    '/', //Baris Baru
+                    ['JustifyLeft', 'JustifyCenter', 'JustifyRight', 'JustifyBlock'],
+                    ['Table', 'HorizontalRule'],
+                    ['Styles', 'Format'],
+                    ['Maximize']
+                ],
+                // Enable table plugin dengan fitur lengkap
+                extraPlugins: 'tableresize,tabletools,tab,justify',
+                // // Konfigurasi untuk mempertahankan styling
+                // allowedContent: true, // Izinkan semua konten
+                // protectedSource: [
+                //     /<table[^>]*>[\s\S]*?<\/table>/g, // Lindungi tag tabel
+                //     /<p[^>]*>[\s\S]*?<\/p>/g, // Lindungi paragraf dengan atribut
+                //     /<div[^>]*>[\s\S]*?<\/div>/g // Lindungi div dengan atribut
+                // ],
+                // Config table
+                table: {
+                    contentToolbar: [
+                        'tableColumn', 'tableRow', 'mergeTableCells',
+                        'tableProperties', 'tableCellProperties'
+                    ],
+                    defaultProperties: {
+                        border: 0,
+                        cellPadding: 5,
+                        cellSpacing: 0,
+                        width: '100%'
+                    }
+                },
+                // Izinkan semua atribut border
+                allowedContent: true, // Izinkan semua konten
+                // Force plain text output
+                basicEntities: false,
+                entities: false,
+                // Enter mode untuk surat resmi
+                enterMode: CKEDITOR.ENTER_BR,
+                shiftEnterMode: CKEDITOR.ENTER_P,
+                // Auto paragraph OFF
+                autoParagraph: false,
+                // Tab navigation dalam tabel
+                enableTabKeyTools: true,
+                // Tab indentation (seperti Word)
+                tabSpaces: 4, // 4 spasi per tab
+                // Remove unnecessary plugins
+                removePlugins: 'elementspath,resize',
+                // Setup untuk clean output dan handling
+                on: {
+                    instanceReady: function(ev) {
+                        editor = ev.editor;
+                        console.log('CKEditor instance ready');
+
+                        // Fokus ke editor setelah data dimuat
+                        setTimeout(function() {
+                            editor.focus();
+                        }, 500);
+                        // Track current table selection
+                        editor.on('selectionChange', function(evt) {
+                            var selection = editor.getSelection();
+                            var element = selection.getStartElement();
+                            currentTable = element.getAscendant('table', true);
+
+                            if (currentTable) {
+                                document.getElementById('tableToolbar').style.display = 'flex';
+                                document.getElementById('tableControls').style.display = 'none';
+                            } else {
+                                document.getElementById('tableToolbar').style.display = 'none';
+                                document.getElementById('tableControls').style.display = 'none';
+                            }
+                        });
+
+                        // Update textarea saat ada perubahan
+                        editor.on('change', function() {
+                            editor.updateElement();
+                        });
+                        // ===== OVERRIDE DEFAULT TABLE DIALOG =====
+                        // Override dialog table untuk mengizinkan border="0"
+                        editor.on('dialogDefinition', function(event) {
+                            var dialogName = event.data.name;
+                            var dialogDefinition = event.data.definition;
+
+                            if (dialogName === 'table' || dialogName === 'tableProperties') {
+                                var infoTab = dialogDefinition.getContents('info');
+                                var borderField = infoTab.get('txtBorder');
+                                if (borderField) {
+                                    borderField['default'] = '0';
+                                }
+                            }
+                        });
+                        // Setup untuk mempertahankan atribut
+                        editor.dataProcessor.htmlFilter.addRules({
+                            elements: {
+                                $: function(element) {
+                                    // Pastikan atribut alignment tidak dihapus
+                                    if (element.name === 'p' || element.name === 'div' ||
+                                        element.name === 'td' || element.name === 'th') {
+                                        if (element.attributes.align) {
+                                            if (!element.attributes.style) {
+                                                element.attributes.style = '';
+                                            }
+                                            element.attributes.style += 'text-align:' +
+                                                element
+                                                .attributes.align + ';';
+                                        }
+                                    }
+
+                                    // Untuk tabel, pastikan border dan width
+                                    if (element.name === 'table') {
+                                        if (!element.attributes.style) {
+                                            element.attributes.style = '';
+                                        }
+                                        if (!element.attributes.style.includes(
+                                                'border-collapse')) {
+                                            element.attributes.style +=
+                                                'border-collapse: collapse;';
+                                        }
+                                    }
+                                    return element;
+                                }
+                            }
+                        });
+                        // Setup untuk mempertahankan alignment
+                        editor.on('getData', function(event) {
+                            var data = event.data.dataValue;
+
+                            // Convert align attribute to inline style
+                            data = data.replace(/align="(left|center|right|justify)"/g,
+                                function(match,
+                                    align) {
+                                    return 'style="text-align:' + align + ';"';
+                                });
+                            // Preserve border="0" atau "none"
+                            data = data.replace(/border="(0|none)"/g, function(match,
+                                borderValue) {
+                                return 'border="' + borderValue +
+                                    '" style="border-collapse: collapse; border: none;"';
+                            });
+
+                            event.data.dataValue = data;
+                        });
+                        // Handle tab navigation dalam tabel
+                        editor.on('key', function(event) {
+                            if (event.data.keyCode === 9) { // Tab key
+                                var selection = editor.getSelection();
+                                var path = selection.getStartElement();
+                                var table = path.getAscendant('table', true);
+
+                                // Mencegah default behavior (keluar dari editor)
+                                event.cancel();
+
+                                if (table) {
+                                    // Handle tab navigation dalam tabel
+                                    var range = selection.getRanges()[0];
+                                    var td = range.startContainer.getAscendant('td', true) ||
+                                        range.startContainer.getAscendant('th', true);
+
+                                    if (td) {
+                                        moveToNextCell(td, !event.data.shiftKey);
+                                    }
+                                } else {
+                                    // Jika di luar tabel, insert tab/spasi
+                                    if (event.data.shiftKey) {
+                                        // Shift+Tab: outdent
+                                        editor.execCommand('outdent');
+                                    } else {
+                                        // Tab normal: indent atau insert tab character
+                                        insertTabCharacter();
+                                    }
+                                }
+                                return false; // Prevent default
+                            }
+                        });
+
+                        // Setup tab character insertion
+                        setupTabHandler();
+                    }
                 }
-            }, 1000);
+            });
         });
 
         document.querySelector('textarea[name="isi_surat"]').addEventListener('input', function(e) {
@@ -554,281 +738,10 @@
         var editor;
         var currentTable = null;
 
-        // Data HTML dari database
-        var rawHtmlContent = {!! json_encode(old('isi_surat', $suratTemplate->isi_surat)) !!};
-
-        // Decode HTML entities jika perlu
-        function decodeHtmlEntities(str) {
-            if (!str) return '';
-            var textarea = document.createElement('textarea');
-            textarea.innerHTML = str;
-            return textarea.value;
-        }
-
-        // Get content from textarea
-        var rawContent = document.getElementById('isi_surat').value;
-        var decodedContent = decodeHtmlEntities(rawContent);
-
-        console.log('Original content length:', rawContent.length);
-        console.log('Decoded content preview:', decodedContent.substring(0, 200));
-
         // Inisialisasi CKEditor dengan config khusus untuk editing tabel
         CKEDITOR.plugins.addExternal('tableresize', '/js/ckeditor/plugins/tableresize/', 'plugin.js');
         //plugin justify
         CKEDITOR.plugins.addExternal('justify', '/js/ckeditor/plugins/justify/', 'plugin.js');
-        CKEDITOR.replace('isi_surat', {
-            height: 400,
-            // Toolbar lengkap dengan table tools
-            toolbar: [
-                ['Source', '-', 'Save', 'NewPage', 'Preview', '-', 'Templates'],
-                ['Cut', 'Copy', 'Paste', 'PasteText', 'PasteFromWord', '-', 'Undo', 'Redo'],
-                ['Find', 'Replace', '-', 'SelectAll', '-', 'Scayt'],
-                ['Form', 'Checkbox', 'Radio', 'TextField', 'Textarea', 'Select', 'Button', 'ImageButton',
-                    'HiddenField'
-                ],
-                '/',
-                ['Bold', 'Italic', 'Underline', 'Strike', 'Subscript', 'Superscript', '-', 'CopyFormatting',
-                    'RemoveFormat'
-                ],
-                ['NumberedList', 'BulletedList', '-', 'Outdent', 'Indent', '-', 'Blockquote', 'CreateDiv', '-',
-                    'JustifyLeft', 'JustifyCenter', 'JustifyRight', 'JustifyBlock', '-', 'BidiLtr', 'BidiRtl'
-                ],
-                ['Link', 'Unlink', 'Anchor'],
-                ['Table', 'HorizontalRule', 'Smiley', 'SpecialChar', 'PageBreak', 'Iframe'],
-                '/',
-                ['Styles', 'Format', 'Font', 'FontSize'],
-                ['TextColor', 'BGColor'],
-                ['Maximize', 'ShowBlocks']
-            ],
-            // Enable table plugin dengan fitur lengkap
-            extraPlugins: 'table,tableresize,tabletools,tab,justify,contextmenu',
-
-            table: {
-                contentToolbar: [
-                    'tableColumn', 'tableRow', 'mergeTableCells',
-                    'tableProperties', 'tableCellProperties'
-                ],
-                // Default table properties
-                defaultProperties: {
-                    border: 0,
-                    cellPadding: 5,
-                    cellSpacing: 0,
-                    width: '100%',
-                    borderStyle: 'none', // Tambahkan ini
-                    borderColor: 'transparent' // Tambahkan ini
-                },
-                advanced: {
-                    // Biarkan user mengatur border secara manual
-                    border: {
-                        allowed: true,
-                        default: 0
-                    },
-                    // Izinkan border style
-                    styles: 'border,border-collapse,border-color,border-style,border-width'
-                }
-            },
-            // Izinkan semua atribut border
-            allowedContent: true, // Izinkan semua konten
-            protectedSource: [
-                /<table[^>]*>[\s\S]*?<\/table>/g, // Lindungi tag tabel
-                /<p[^>]*>[\s\S]*?<\/p>/g, // Lindungi paragraf dengan atribut
-                /<div[^>]*>[\s\S]*?<\/div>/g // Lindungi div dengan atribut
-            ],
-            // Force plain text output
-            basicEntities: false,
-            entities: false,
-            fullPage: false,
-            // Enter mode untuk surat resmi
-            enterMode: CKEDITOR.ENTER_BR,
-            shiftEnterMode: CKEDITOR.ENTER_P,
-            // Auto paragraph OFF
-            autoParagraph: false,
-            // Tab navigation dalam tabel
-            enableTabKeyTools: true,
-            // Tab indentation (seperti Word)
-            tabSpaces: 4, // 4 spasi per tab
-            // Remove unnecessary plugins
-            removePlugins: 'elementspath,resize',
-            // Setup untuk clean output dan handling
-            on: {
-                instanceReady: function(ev) {
-                    var editor = ev.editor;
-
-                    // Bersihkan konten dari encoding ganda
-                    var content = decodedContent;
-                    editor.setData(decodedContent);
-                    editor.focus();
-                    // Hapus encoding ganda jika ada
-                    if (content.includes('&lt;') || content.includes('&gt;')) {
-                        content = content
-                            .replace(/&lt;/g, '<')
-                            .replace(/&gt;/g, '>')
-                            .replace(/&amp;/g, '&')
-                            .replace(/&quot;/g, '"')
-                            .replace(/&#039;/g, "'")
-                            .replace(/&#39;/g, "'");
-                    }
-
-                    // Set data ke editor
-                    setTimeout(function() {
-                        editor.setData(content, {
-                            callback: function() {
-                                console.log('CKEditor initialized successfully');
-                                editor.focus();
-                            }
-                        });
-                    }, 100);
-
-                    // Update textarea saat ada perubahan
-                    editor.on('change', function() {
-                        editor.updateElement();
-                    });
-
-                    // ===== OVERRIDE DEFAULT TABLE DIALOG =====
-                    // Override dialog table untuk mengizinkan border="0"
-                    editor.on('dialogDefinition', function(event) {
-                        var dialogName = event.data.name;
-                        var dialogDefinition = event.data.definition;
-
-                        // Modifikasi dialog tabel
-                        if (dialogName === 'table') {
-                            var infoTab = dialogDefinition.getContents('info');
-
-                            // Ubah default border ke 0
-                            var borderField = infoTab.get('txtBorder');
-                            if (borderField) {
-                                borderField['default'] = '0'; // Set default ke 0
-                            }
-
-                            // Tambahkan pilihan border style
-                            var borderStyleField = infoTab.get('selBorderStyle');
-                            if (borderStyleField) {
-                                borderStyleField['items'] = [
-                                    ['None', 'none'],
-                                    ['Solid', 'solid'],
-                                    ['Dashed', 'dashed'],
-                                    ['Dotted', 'dotted'],
-                                    ['Double', 'double']
-                                ];
-                                borderStyleField['default'] = 'none';
-                            }
-                        }
-
-                        // Modifikasi dialog table properties
-                        if (dialogName === 'tableProperties') {
-                            var infoTab = dialogDefinition.getContents('info');
-
-                            // Set default border ke 0
-                            var borderField = infoTab.get('txtBorder');
-                            if (borderField) {
-                                borderField['default'] = '0';
-                            }
-                        }
-                    });
-                    // Setup untuk mempertahankan atribut
-                    editor.dataProcessor.htmlFilter.addRules({
-                        elements: {
-                            $: function(element) {
-                                // Pastikan atribut alignment tidak dihapus
-                                if (element.name === 'p' || element.name === 'div' ||
-                                    element.name === 'td' || element.name === 'th') {
-                                    if (element.attributes.align) {
-                                        if (!element.attributes.style) {
-                                            element.attributes.style = '';
-                                        }
-                                        element.attributes.style += 'text-align:' + element
-                                            .attributes.align + ';';
-                                    }
-                                }
-
-                                // Untuk tabel, pastikan border dan width
-                                if (element.name === 'table') {
-                                    if (!element.attributes.style) {
-                                        element.attributes.style = '';
-                                    }
-                                    if (!element.attributes.style.includes('border-collapse')) {
-                                        element.attributes.style += 'border-collapse: collapse;';
-                                    }
-                                }
-                                return element;
-                            }
-                        }
-                    });
-                    // Setup untuk mempertahankan alignment
-                    editor.on('getData', function(event) {
-                        var data = event.data.dataValue;
-
-                        // Convert align attribute to inline style
-                        data = data.replace(/align="(left|center|right|justify)"/g, function(match,
-                            align) {
-                            return 'style="text-align:' + align + ';"';
-                        });
-                        // Preserve border="0" atau "none"
-                        data = data.replace(/border="(0|none)"/g, function(match, borderValue) {
-                            return 'border="' + borderValue +
-                                '" style="border-collapse: collapse; border: none;"';
-                        });
-
-                        event.data.dataValue = data;
-                    });
-                    // Handle tab navigation dalam tabel
-                    editor.on('key', function(event) {
-                        if (event.data.keyCode === 9) { // Tab key
-                            var selection = editor.getSelection();
-                            var path = selection.getStartElement();
-                            var table = path.getAscendant('table', true);
-
-                            // Mencegah default behavior (keluar dari editor)
-                            event.cancel();
-
-                            if (table) {
-                                // Handle tab navigation dalam tabel
-                                var range = selection.getRanges()[0];
-                                var td = range.startContainer.getAscendant('td', true) ||
-                                    range.startContainer.getAscendant('th', true);
-
-                                if (td) {
-                                    moveToNextCell(td, !event.data.shiftKey);
-                                }
-                            } else {
-                                // Jika di luar tabel, insert tab/spasi
-                                if (event.data.shiftKey) {
-                                    // Shift+Tab: outdent
-                                    editor.execCommand('outdent');
-                                } else {
-                                    // Tab normal: indent atau insert tab character
-                                    insertTabCharacter();
-                                }
-                            }
-                            return false; // Prevent default
-                        }
-                    });
-
-                    // Track current table selection
-                    editor.on('selectionChange', function(evt) {
-                        var selection = editor.getSelection();
-                        var element = selection.getStartElement();
-                        currentTable = element.getAscendant('table', true);
-
-                        if (currentTable) {
-                            document.getElementById('tableToolbar').style.display = 'flex';
-                            document.getElementById('tableControls').style.display = 'none';
-                            // Tambahkan custom resize handle
-                            addCustomResizeHandle(currentTable);
-                        } else {
-                            document.getElementById('tableToolbar').style.display = 'none';
-                            document.getElementById('tableControls').style.display = 'none';
-                        }
-                    });
-                    // Setup tab character insertion
-                    setupTabHandler();
-                    // Fokus ke editor setelah data dimuat
-                    setTimeout(function() {
-                        editor.focus();
-                    }, 500);
-                }
-            }
-        });
 
         // ===== FUNGSI UNTUK INSERT TAB CHARACTER =====
         function setupTabHandler() {
@@ -1176,24 +1089,6 @@
             setTimeout(addManualResizeButton, 100);
         });
 
-        // Pastikan CKEditor sudah ready sebelum setData
-        editor.on('instanceReady', function(ev) {
-            editor = ev.editor;
-
-            // Tunggu sedikit untuk memastikan editor siap
-            setTimeout(function() {
-                var content = "{{ addslashes($suratTemplate->isi_surat) }}";
-                content = content.replace(/\\/g, '');
-
-                // Decode HTML entities
-                var temp = document.createElement('textarea');
-                temp.innerHTML = content;
-                content = temp.value;
-
-                editor.setData(content);
-            }, 100);
-        });
-
         function showTableControls() {
             document.getElementById('tableControls').style.display = 'flex';
             document.getElementById('tableToolbar').style.display = 'none';
@@ -1251,27 +1146,6 @@
             editor.fire('change');
             document.getElementById('tableControls').style.display = 'none';
             document.getElementById('tableToolbar').style.display = 'flex';
-        }
-
-        // Fungsi untuk membersihkan HTML sebelum dimasukkan ke CKEditor
-        function cleanHtmlForEditor(html) {
-            // Decode HTML entities
-            var temp = document.createElement('textarea');
-            temp.innerHTML = html;
-            html = temp.value;
-
-            // Hapus backslashes
-            html = html.replace(/\\/g, '');
-
-            // Normalize line breaks
-            html = html.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-
-            // Pastikan tag HTML valid
-            html = html.replace(/<br\s*\/?>/gi, '<br>');
-            html = html.replace(/<p>\s*<\/p>/gi, '<p>&nbsp;</p>');
-            html = html.replace(/<td>\s*<\/td>/gi, '<td>&nbsp;</td>');
-
-            return html;
         }
 
         // Fungsi untuk membersihkan HTML sebelum submit
@@ -1365,103 +1239,6 @@
             html = html.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
             return html.trim();
-
-            // Panggil sebelum form submit
-            document.querySelector('form').addEventListener('submit', function(e) {
-                var editor = CKEDITOR.instances.isi_surat;
-                if (editor) {
-                    // Update textarea dengan data dari CKEditor
-                    editor.updateElement();
-
-                    // Bersihkan HTML sebelum submit
-                    var textarea = document.getElementById('isi_surat');
-                    var html = textarea.value;
-
-                    // Pastikan tabel memiliki atribut yang benar
-                    html = html.replace(/<table([^>]*)>/gi, function(match, attrs) {
-                        var result = match;
-
-                        // Tambahkan cellpadding dan cellspacing jika belum ada
-                        if (!result.includes('cellpadding=')) {
-                            result = result.replace('<table', '<table cellpadding="5"');
-                        }
-                        if (!result.includes('cellspacing=')) {
-                            result = result.replace('<table', '<table cellspacing="0"');
-                        }
-
-                        return result;
-                    });
-                    // Convert align attribute to style
-                    html = html.replace(/align="(left|center|right|justify)"/g, function(match, align) {
-                        return 'style="text-align:' + align + ';"';
-                    });
-
-                    // Hapus img dan script
-                    html = html.replace(/<img[^>]*>/gi, '');
-                    html = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
-
-                    // Ensure tables have proper styling for PDF
-                    html = html.replace(/<table([^>]*)>/g, function(match, attrs) {
-                        var result = match;
-
-                        // Add border-collapse if not present
-                        if (!result.includes('border-collapse')) {
-                            if (result.includes('style=')) {
-                                result = result.replace('style="', 'style="border-collapse: collapse; ');
-                            } else {
-                                result = result.replace('<table',
-                                    '<table style="border-collapse: collapse;"');
-                            }
-                        }
-
-                        return result;
-                    });
-
-                    textarea.value = html;
-                }
-            });
-            // Preview format surat
-            document.getElementById('format_surat').addEventListener('input', function() {
-                document.getElementById('preview-format').textContent = this.value || '[format]';
-            });
-            // Solusi paling aman - biarkan Blade handle escaping
-            document.addEventListener('DOMContentLoaded', function() {
-                // Ambil konten dari textarea
-                var textarea = document.getElementById('isi_surat');
-                var content = textarea.value;
-
-                // Basic cleanup
-                content = content.replace(/&lt;/g, '<')
-                    .replace(/&gt;/g, '>')
-                    .replace(/&amp;/g, '&')
-                    .replace(/&quot;/g, '"')
-                    .replace(/&#039;/g, "'");
-
-                // Inisialisasi CKEditor dengan config minimal
-                CKEDITOR.replace('isi_surat', {
-                    height: 400,
-                    toolbar: 'full',
-                    allowedContent: true,
-                    on: {
-                        instanceReady: function() {
-                            // Set data setelah editor siap
-                            this.setData(content);
-                        }
-                    }
-                });
-
-                // Preview format surat
-                document.getElementById('format_surat').addEventListener('input', function() {
-                    document.getElementById('preview-format').textContent = this.value || '[format]';
-                });
-
-                // Set jenis surat
-                var jenisSuratSelect = document.getElementById('jenis_surat');
-                var jenisSuratValue = "{{ old('jenis_surat', $suratTemplate->jenis_surat) }}";
-                if (jenisSuratValue) {
-                    jenisSuratSelect.value = jenisSuratValue;
-                }
-            });
         }
 
         // Keyboard shortcut helper
@@ -2260,8 +2037,6 @@
         document.getElementById('suratForm').addEventListener('submit', function(e) {
             if (editor) {
                 // Format tabel terlebih dahulu
-                // ensureTableAttributes();
-                formatTableForPDF();
 
                 editor.updateElement();
 
@@ -2276,7 +2051,6 @@
 
                 // Hapus img dan script
                 html = html.replace(/<img[^>]*>/gi, '');
-                html = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
 
                 // Ensure tables have proper styling for PDF
                 html = html.replace(/<table([^>]*)>/g, function(match, attrs) {
@@ -2296,7 +2070,6 @@
 
                 textarea.value = html;
             }
-            return true;
         });
         // Panggil setup keyboard shortcuts
         setupKeyboardShortcuts();

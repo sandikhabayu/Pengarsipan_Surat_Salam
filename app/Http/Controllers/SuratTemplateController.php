@@ -397,134 +397,109 @@ class SuratTemplateController extends Controller
     }
 
     public function edit($id)
-    {
-        $suratTemplate = SuratTemplate::findOrFail($id);
-        
-        // Debug data
-    \Log::info('Isi surat dari database:', [
-        'raw' => $suratTemplate->isi_surat,
-        'length' => strlen($suratTemplate->isi_surat),
-        'first_100_chars' => substr($suratTemplate->isi_surat, 0, 100)
-    ]);
-        // Extract nomor urut dari nomor_surat untuk form edit
-        $nomorParts = explode('/', $suratTemplate->nomor_surat);
-        $nomorUrut = $nomorParts[0] ?? '';
-        
-        // DECODE HTML ENTITIES sebelum dikirim ke view
-        $suratTemplate->isi_surat = html_entity_decode($suratTemplate->isi_surat, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        
-        // Bersihkan backslashes jika ada
-        $suratTemplate->isi_surat = stripslashes($suratTemplate->isi_surat);
-        
-         // Hapus encoding ganda jika ada
-    $suratTemplate->isi_surat = str_replace(
-        ['&lt;', '&gt;', '&amp;', '&quot;', '&#039;'],
-        ['<', '>', '&', '"', "'"],
-        $suratTemplate->isi_surat
-    );
+{
+    $suratTemplate = SuratTemplate::findOrFail($id);
+    
+    // Decode HTML entities
+    $suratTemplate->isi_surat = htmlspecialchars_decode($suratTemplate->isi_surat, ENT_QUOTES | ENT_HTML5);
+    
+    // // Bersihkan backslashes
+    // $suratTemplate->isi_surat = stripslashes($suratTemplate->isi_surat);
+    
+    // Extract nomor urut
+    $nomorParts = explode('/', $suratTemplate->nomor_surat);
+    $nomorUrut = $nomorParts[0] ?? '';
+    
+    $jenisSuratList = [
+        'kepala_desa' => 'Surat Kepala Desa',
+        'sekretariat' => 'Surat Sekretariat'
+    ];
 
-        $jenisSuratList = [
-            'kepala_desa' => 'Surat Kepala Desa',
-            'sekretariat' => 'Surat Sekretariat'
-        ];
-
-        // Debug: Cek data yang dikirim ke view
-        \Log::info('Data surat template untuk edit:', [
-            'id' => $suratTemplate->id,
-            'isi_surat_length' => strlen($suratTemplate->isi_surat),
-            'isi_surat_preview' => substr($suratTemplate->isi_surat, 0, 100)
-        ]);
-        
-        return view('petugas.surat-template.edit', compact('suratTemplate', 'nomorUrut', 'jenisSuratList'));
-    }
+    return view('petugas.surat-template.edit', compact('suratTemplate', 'nomorUrut', 'jenisSuratList'));
+}
 
     public function update(Request $request, $id)
-    {
-        $validated = $request->validate([
-            'jenis_surat' => 'required|in:kepala_desa,sekretariat',
-            'nomor_urut' => 'required|string',
-            'lampiran' => 'required|string|max:255',
-            'perihal' => 'required|string',
-            'tanggal' => 'required|date',
-            'kepada' => 'required|string',
-            'isi_surat' => 'required',
+{
+    $validated = $request->validate([
+        'jenis_surat' => 'required|in:kepala_desa,sekretariat',
+        'nomor_urut' => 'required|string',
+        'lampiran' => 'required|string|max:255',
+        'perihal' => 'required|string',
+        'tanggal' => 'required|date',
+        'kepada' => 'required|string',
+        'isi_surat' => 'required',
+    ]);
+
+    $suratTemplate = SuratTemplate::findOrFail($id);
+    $oldNomorSurat = $suratTemplate->nomor_surat;
+
+    // Bersihkan HTML sebelum update (gunakan fungsi cleanHTML yang sama)
+    $html = $validated['isi_surat'];
+    $html = preg_replace('/<img[^>]*>/i', '', $html);
+    $html = preg_replace('/<\/img>/i', '', $html);
+    $cleanedHTML = $this->cleanHTML($html);
+    
+    // Generate nomor surat baru
+    if ($validated['jenis_surat'] == 'kepala_desa') {
+        $nomorSurat = $validated['nomor_urut'] . '/SKD/' . Carbon::parse($validated['tanggal'])->format('m') . '/' . Carbon::parse($validated['tanggal'])->format('Y');
+    } else {
+        $nomorSurat = $validated['nomor_urut'] . '/SS/' . Carbon::parse($validated['tanggal'])->format('m') . '/' . Carbon::parse($validated['tanggal'])->format('Y');
+    }
+
+    // Validasi nomor surat tidak duplikat
+    $existingNomor = SuratTemplate::where('nomor_surat', $nomorSurat)
+        ->where('id', '!=', $suratTemplate->id)
+        ->exists();
+
+    if ($existingNomor) {
+        return back()->withInput()->withErrors([
+            'nomor_urut' => 'Nomor surat ini sudah digunakan. Silakan gunakan nomor lain.'
         ]);
+    }
 
-        $suratTemplate = SuratTemplate::findOrFail($id);
-        $oldNomorSurat = $suratTemplate->nomor_surat;
+    // Update SuratTemplate
+    $suratTemplate->update([
+        'jenis_surat' => $validated['jenis_surat'],
+        'nomor_surat' => $nomorSurat,
+        'lampiran' => $validated['lampiran'],
+        'perihal' => $validated['perihal'],
+        'tanggal' => $validated['tanggal'],
+        'kepada' => $validated['kepada'],
+        'isi_surat' => $cleanedHTML,
+    ]);
 
-        // Simpan dengan htmlspecialchars_decode jika perlu
-        $suratTemplate = SuratTemplate::find($id);
-        $suratTemplate->isi_surat = htmlspecialchars_decode($request->isi_surat);
-        $suratTemplate->save();
+    // Update juga di SuratKeluar jika ada
+    $suratKeluar = SuratKeluar::where('nomor_surat', $oldNomorSurat)->first();
+    if ($suratKeluar) {
+        $kodeSurat = $validated['jenis_surat'] == 'kepala_desa' ? 'SKD-' : 'SS-';
         
-        // Bersihkan HTML sebelum update
-        $html = $validated['isi_surat'];
-        $html = preg_replace('/<img[^>]*>/i', '', $html);
-        $html = preg_replace('/<\/img>/i', '', $html);
-        $cleanedHTML = $this->cleanHTML($html);
-        
-        // Generate nomor surat baru berdasarkan jenis
-        if ($validated['jenis_surat'] == 'kepala_desa') {
-            $nomorSurat = $validated['nomor_urut'] . '/SKD/' . Carbon::parse($validated['tanggal'])->format('m') . '/' . Carbon::parse($validated['tanggal'])->format('Y');
-        } else {
-            $nomorSurat = $validated['nomor_urut'] . '/SS/' . Carbon::parse($validated['tanggal'])->format('m') . '/' . Carbon::parse($validated['tanggal'])->format('Y');
-        }
-
-        // Validasi nomor surat tidak duplikat (kecuali untuk record ini)
-        $existingNomor = SuratTemplate::where('nomor_surat', $nomorSurat)
-            ->where('id', '!=', $suratTemplate->id)
-            ->exists();
-
-        if ($existingNomor) {
-            return back()->withInput()->withErrors([
-                'nomor_urut' => 'Nomor surat ini sudah digunakan. Silakan gunakan nomor lain.'
-            ]);
-        }
-
-        // Update SuratTemplate
-        $suratTemplate->update([
-            'jenis_surat' => $validated['jenis_surat'],
+        $suratKeluar->update([
+            'kode_surat' => $kodeSurat . $validated['nomor_urut'],
             'nomor_surat' => $nomorSurat,
             'lampiran' => $validated['lampiran'],
+            'tanggal_keluar' => $validated['tanggal'],
+            'tujuan' => $validated['kepada'],
             'perihal' => $validated['perihal'],
-            'tanggal' => $validated['tanggal'],
-            'kepada' => $validated['kepada'],
-            'isi_surat' => $cleanedHTML,
+            'jenis_surat' => $validated['jenis_surat'],
         ]);
+        
+        // Regenerate PDF
+        $filename = 'surat-' . $validated['jenis_surat'] . '-' . $suratTemplate->id . '-' . time() . '.pdf';
+        $filePath = 'surat-keluar/' . $filename;
 
-        // Update juga di SuratKeluar jika ada
-        $suratKeluar = SuratKeluar::where('nomor_surat', $oldNomorSurat)->first();
-        if ($suratKeluar) {
-            $kodeSurat = $validated['jenis_surat'] == 'kepala_desa' ? 'SKD-' : 'SS-';
-            
-            $suratKeluar->update([
-                'kode_surat' => $kodeSurat . $validated['nomor_urut'],
-                'nomor_surat' => $nomorSurat,
-                'lampiran' => $validated['lampiran'],
-                'tanggal_keluar' => $validated['tanggal'],
-                'tujuan' => $validated['kepada'],
-                'perihal' => $validated['perihal'],
-                'jenis_surat' => $validated['jenis_surat'],
-            ]);
-            
-            // Regenerate PDF
-            $filename = 'surat-' . $validated['jenis_surat'] . '-' . $suratTemplate->id . '-' . time() . '.pdf';
-            $filePath = 'surat-keluar/' . $filename;
+        $pdf = Pdf::loadView('petugas.surat-template.pdf', [
+            'surats' => $suratTemplate,
+            'jenis_surat' => $validated['jenis_surat']
+        ])->setPaper('a4', 'portrait');
 
-            $pdf = Pdf::loadView('petugas.surat-template.pdf', [
-                'surats' => $suratTemplate,
-                'jenis_surat' => $validated['jenis_surat']
-            ])->setPaper('a4', 'portrait');
-
-            Storage::disk('public')->put($filePath, $pdf->output());
-            
-            $suratKeluar->update(['file_path' => $filePath]);
-        }
-
-        return redirect()->route('petugas.surat-template.show', $id)
-            ->with('success', 'Surat berhasil diperbarui');
+        Storage::disk('public')->put($filePath, $pdf->output());
+        
+        $suratKeluar->update(['file_path' => $filePath]);
     }
+
+    return redirect()->route('petugas.surat-template.show', $id)
+        ->with('success', 'Surat berhasil diperbarui');
+}
 
     public function destroy($id)
     {
@@ -660,22 +635,6 @@ class SuratTemplateController extends Controller
         return back()->with('error', 'Gagal menghasilkan PDF: ' . $e->getMessage());
     }
 }
-
-// public function download($id)
-// {
-//     $surats = SuratTemplate::findOrFail($id);
-//     $filename = 'surat-' . ($surats->jenis_surat == 'kepala_desa' ? 'kepala-desa' : 'sekretariat') . '-' . $surats->id . '.pdf';
-
-//     // Gunakan DomPDF yang sudah terinstall
-//     $html = $this->formatHTMLForDomPDF($surats);
-    
-//     $pdf = Pdf::loadHTML($html)
-//         ->setPaper('a4', 'portrait')
-//         ->setOption('defaultFont', 'Times New Roman')
-//         ->setOption('isRemoteEnabled', true); // Untuk enable gambar
-    
-//     return $pdf->download($filename);
-// }
 
     // Fungsi untuk membersihkan gambar temporary
     private function cleanTempImages()

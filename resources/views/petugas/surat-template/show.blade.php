@@ -14,7 +14,9 @@
                     <div class="text-center ">
                         <h4 class="text-2xl font-semibold">PEMERINTAH KABUPATEN PURWOREJO</h4>
                         <h4 class="text-2xl font-semibold">KECAMATAN GEBANG</h4>
-                        <h4 class="text-2xl font-bold">{{$suratTemplate->jenis_surat == 'kepala_desa' ? 'KEPALA DESA' : 'SEKRETARIAT'}} DESA SALAM</h4>
+                        <h4 class="text-2xl font-bold">
+                            {{ $suratTemplate->jenis_surat == 'kepala_desa' ? 'KEPALA DESA' : 'SEKRETARIAT' }} DESA SALAM
+                        </h4>
                         <p class="text-md leading-5">Alamat: Desa Salam Kecamatan Gebang Kabupaten Purworejo
                             Kode Pos 54191</p>
                     </div>
@@ -56,21 +58,27 @@
                     <!-- Isi Surat -->
                     <div class="mb-8">
                         <div class="text-gray-950 whitespace-pre-line">
-                            {!! nl2br(e($suratTemplate->isi_surat ?? 'Isi surat tidak tersedia')) !!}
+                            {!! old('isi_surat', $suratTemplate->isi_surat) !!}
                         </div>
                     </div>
 
                     <!-- Tanda Tangan -->
                     <div class="flex justify-end mt-12 pr-16">
                         <div class="text-center">
-                            <p class="text-gray-950">Besani,
-                                {{ \Carbon\Carbon::parse($suratTemplate->tanggal)->translatedFormat('j F Y') }}</p>
-                            <br>
-                            <p class="text-gray-950">KEPALA</p>
-                            <p class="text-gray-950">MI MA’ARIF BESANI</p>
+                            <p class="text-gray-950">
+                                {{ $suratTemplate->jenis_surat == 'kepala_desa' ? 'Pj. Kepala Desa Salam' : 'Sekretaris Desa Salam' }}
+                            </p>
                             <div class="h-24"></div>
-                            <p class="font-bold underline">TEGUH PRASETIYO.S.Pd.I</p>
-                            <p class="text-gray-950">NIP. 198412042009011008</p>
+                            <p class="font-bold underline">
+                                {{ $suratTemplate->jenis_surat == 'kepala_desa' ? 'BAMBANG LISTIONO AGUS,P.S.Sos' : 'MAULANA AMIRUL AKHMAD' }}
+                            </p>
+                            <p class="text-gray-950">
+                                @if ($suratTemplate->jenis_surat == 'kepala_desa' || $suratTemplate->jenis_surat == 'wakil_kepala_desa')
+                                    Pembina /IVa, NIP.196808111989031008
+                                @else
+                                    &nbsp;
+                                @endif
+                            </p>
                         </div>
                     </div>
                 </div>
